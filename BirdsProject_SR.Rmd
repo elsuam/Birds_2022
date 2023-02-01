@@ -1,0 +1,497 @@
+---
+title: "Birds Project"
+author: "Samuel Richards"
+date: "2022-06-01"
+output:
+  html_document:
+    toc: true
+    toc_float: true
+    code_folding: hide
+    number_sections: false
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, warning = F)
+```
+
+```{r include=FALSE}
+suppressPackageStartupMessages(library(tidyverse))
+suppressPackageStartupMessages(library(caret))
+suppressPackageStartupMessages(library(ggplot2))
+suppressPackageStartupMessages(library(GGally))
+```
+
+```{r include=FALSE}
+setwd("C:/")
+
+birds <- read.csv("birdsdata.csv")
+birds <- birds[ , c(1:3, 5:10, 12:20, 26:31)]
+str(birds)
+set.seed(6)
+```
+This dataset consists of 
+Originally with 31 variables, I started by removing variables that I knew would be impertinent to this study (i.e. Inferences from previous researches, reference sourcing, etc.).  After whittling it down, I was left with 10661 observations of 24 variables.  7 variables are categorical.
+
+```{r include=FALSE}
+#PREPROCESSING
+which(!complete.cases(birds)) # There are 93 observations with missing values
+
+birds %>% 
+summarize(count=sum(is.na(birds$Habitat)))  #77 missing values for Habitat
+
+birds %>% 
+  mutate(MISS = is.na(birds$Habitat)) %>% 
+  arrange(desc(MISS)) %>% 
+  select(Habitat, Species2) %>% 
+head(78)
+
+filter(birds, Species2 == "Caprimulgus meesi")
+filter(birds, Species2 == "Nok hualon")
+filter(birds, Species2 == "Scytalopus gettyae")
+filter(birds, Species2 == "Calyptura cristata")
+filter(birds, Species2 == "Glaucidium mooreorum")
+
+#Species habitat cannot be accurately written in based on the habitat of the same species in another row.
+#These will be ommitted.
+
+birds <- birds[!is.na(birds$Habitat),]
+
+which(!complete.cases(birds)) # There are 15 observations with missing values left
+```
+There were 93 observations with missing values. 77 of these were missing values for *Habitat*. I had filtered the data to display observations that had missing values for *Habitat*, in hopes to find some duplicate observations for *Species2* that could be used to fill in values for *Habitat*, but that search returned no helpful results.  So, these 77 observations were removed from the dataset, leaving us with 10582 observations, ony 15 of which having missing values (to be dealt with later).
+
+
+## Summary Statistics
+
+The histogram below displays the relative proportions of habitats for the birds in our dataset.  
+
+```{r echo=FALSE}
+#SUMMARY STATISTICS
+
+ggplot(birds, aes(x = Habitat, fill = Primary.Lifestyle)) +   #Proportions of habitat and lifestyle within each
+  geom_bar(aes(y = (..count..)/sum(..count..)))
+
+  round(prop.table(table(birds$Habitat)), 3)  #Numeric calculations for the above
+```
+
+
+Each category of habitat is split up in color by the relative proportions of primary lifestyle for each habitat: **Aerial** (species spends much of the time in flight), **Aquatic** (species spends much time sitting in water), **Generalist** (species has no definitive prevalence of habits), **Insessorial** (species spends much time perching above the ground), and **Terrestrial** (species spends much time on the ground).  Notice the majority of birds in our dataset reside in forests (57.2%), and in habitats that accommodate such behavior a large majority have an incessorial lifestyle, followed by a terrestrial.
+
+```{r echo=FALSE}
+
+ggplot(birds, aes(x = Trophic.Level, fill = Trophic.Niche)) + #Proportions of eating habits
+  geom_bar(aes(y = (..count..)/sum(..count..)))
+
+  round(prop.table(table(birds$Trophic.Level)), 3)  #Numeric calculations for the above
+```
+The above histogram displays the relative proportions of *Trophic.Level* (class of eating habits) and subcategories of *Trophic.Niche* (more elaborative eating habits):
+**Aquatic Predator** - species obtaining at least 60% of food resources from vertebrate and invertebrate animals in aquatic systems.
+**Frugivore** - species obtaining at least 60% of food resources from fruit.
+**Granivore** - species obtaining at least 60% of food resources from seeds or nuts.
+**Herbivore aquatic** - species obtaining at least 60% of food resources from plant materials in aquatic systems.
+**Invertivore** - species obtaining at least 60% of food resources from invertebrates in terrestrial systems.
+**Nectarivore** - species obtaining at least 60% of food resources from nectar.
+**Omnivore** - no definitive prevalence of habits.
+**Scavenger ** - species obtaining at least 60% of food resources from carrion, offal or refuse.
+Notice that most birds in our dataset are carnivorous (55.8%), feeding primarily off of terrestrial invertibrae (i.e. works, spiders, etc.).  Of the 27.6% that are Herbivores, there is a relatively even distribution among most subcategories of their diets.  This could be so because Omnivores have little preference in what type of plant life they get their food from (i.e. a plant is a plant).
+
+```{r echo=FALSE}
+ggplot(birds, aes(x = Tail.Length, y = Wing.Length, size = Mass, color = Trophic.Level)) +
+  geom_point(alpha = .5)
+```
+
+Here, observations are plotted based on *Tail.Length*, *Wing.Length*, *Mass*, and *Trohic.Level*.  To fit many more variables would be visually unpleasing (and already much of it is difficult to make out).  What we can see is a fairly linear relationship between *Tail.Length* and *Wing.Length*, with the mass of the bird increasing as its size increases in these ways.  *Trophic.Level* is pretty widely disbursed throughout the plot, indicating that the mass or size of the bird in these dimensions does not have much influence on its general eating habits.
+
+
+## Pairwise scatterplots
+
+```{r echo=FALSE}
+birds.att <- select(birds, Beak.Length_Culmen:Mass) # Separating variables that represent physical attributes
+
+ggpairs(birds.att)
+
+#Highest abs correlations:
+#Beak.Depth // Beak.Width - 0.903
+#Secondary1 // Wing.Length - 0.928
+#Kipps.Distance // Wing.Length - 0.880
+
+#-----------SAVE THESE FOR LATER-----------------
+
+#filter(birds, Habitat == "Forest")            #Subset Data of "Forest Dwellers"
+#filter(birds, Trophic.Level == "Scavenger")   #Subset Data of "Scavengers"
+  
+```
+
+Here our data was subset to include numeric variables only.  Each variable is paired up with one another to display a general relationship between any two numeric variables.  Those with the highest correlations (in absolute value) are:
+*Secondary1* (Length from the bend of the wing to the innermost primary feather) and *Wing.Length* - 0.928
+*Beak.Depth* and *Beak.Width* - 0.903
+*Kipps.Distance* (Length from the tip of the first secondary feather to the tip of the longest primary) and *Wing.Length* - 0.880
+
+
+## Principal Component Analysys
+
+We will further analyze by doing a Principal Component Analysis in order to reduce the number of variables to a two-dimensional space.  We first further subset the data to include only 6 variables (the original number of variables produced an output that was difficult to see).
+
+```{r echo=FALSE}
+round(apply(birds.att, 2, var), 3)    # Variances of all variables
+
+birds.pca <- select(birds, Beak.Length_Culmen, Tarsus.Length, Wing.Length, Kipps.Distance, Tail.Length, Mass)
+
+#PCA
+
+pca <- prcomp(birds.pca, scale. = TRUE)
+  summary(pca)
+  
+  biplot(pca)       #Biplot of PC1 and PC2 for limited variables (difficult to read with all variables included)
+```
+
+Because the variances of the variables in our dataset are wildly different, we have scaled the values to generate a more accurate representation.  The first two principal components explain over 78% of our total overall variation of the 6 variables.
+This biplot shows what observations have more extreme values for the variables shown: For example, observations 1098 and 1097 will have a larger mass than observation 10258.  See Below:
+
+```{r echo=FALSE}
+birds.pca[c(1095,1096,10184),]
+```
+
+## Dendrogram and Hierarchical Clustering
+
+Next we apply a means of sub-setting the data through hierarchical clustering.  We're taking the Euclidean distances of all points on the biplot (now shown as observation points rather than rotated values) and using complete linkage to assign our cluster observations.  This means that observations are sequentially grouped together based on the furthest pairbetween groups of clusters.  The point at which our dendrogram shows noticably larger distances before merging clusters is where we made our "cut," and display the cluster assignments accordingly.
+
+```{r echo=FALSE}
+d <- dist(birds.pca)
+  
+dend <- hclust(d, method = "complete")
+  plot(dend)
+  abline(h = 10000, lty = 2)
+      
+clusters <- as.character(cutree(dend, h = 10000)) #Cut height
+
+new.coords.clus <- data.frame(pca$x, clusters)
+
+ggplot(new.coords.clus, aes(x = PC1, y = PC2, color = clusters)) +
+  geom_point(alpha = 0.50) 
+```
+
+The plot shows all the observation points from our principal component analysis colored by their cluster assignment.  Notice that the two observations in the upper left are far away from the rest of the data; so far that they have their own cluster assignment.  What makes them so special?
+
+```{r echo=FALSE}
+new.coords.clus2 <- data.frame(birds, clusters)
+new.coors.clus2 <- new.coords.clus2[which(new.coords.clus2$cluster==6),]
+select(new.coors.clus2, Species2)
+```
+
+The species are Struthio Camelus and Struthio Molybdophanes - They're ostriches!  Interesting as they are as birds, the fact that they are so much different than all other birds makes them a nuisance for representing data for this study.  So we will remove our ostrich outliers and rerun the models.
+
+
+## Updated Models
+
+```{r echo=FALSE}
+#REMOVAL OF OUTLIERS
+
+new.coords.clus.no <- new.coords.clus[which(!new.coords.clus$cluster==6),]  #Drops the Ostrich Outliers
+
+#PCA_No Ostriches
+
+birds.pca.no <- birds.pca[which(!birds.pca$Mass>100000),]  #Drops the Ostrich Outliers
+
+pca.no <- prcomp(birds.pca.no, scale. = TRUE)
+  #summary(pca.no)
+```
+
+```{r}
+  biplot(pca.no)
+ggplot(new.coords.clus.no, aes(x = PC1, y = PC2, color = clusters)) +
+  geom_point(alpha = 0.50)  #Re-runs the model without OO's
+```
+
+After removing the ostrich outliers, we can see our plotted values and cluster assignments a little better.  What I found fascinating is that the ostriches has so much of an influence on the biplot that it turned it nearly upside down!  The idea is the same, following along the direction at which the lines for each variable point, but the masses of those ostriches had a big impact on the outlook of the plot.
+
+
+```{r include=FALSE}
+birds <- birds[which(!birds$Mass>100000),]  #Drops the Ostrich Outliers for the rest of the dataset
+```
+
+
+## K Nearest Neighbors
+
+Next we are going to apply more learning methods to build models and make predictions.  We will start by building a mdoel with the KNN approach.  This methd takes an average of nearby "neighbors" of data points to make predictions of a response variable based on the explanatory variables in the model.
+
+```{r echo=FALSE}
+#SUPERVISED LEARNING
+
+birdsnm <- na.omit(birds) #Drops all missing values from the dataset in the interest of model building
+
+birds.models <- select(birdsnm, Beak.Length_Culmen, Tarsus.Length:Secondary1, Tail.Length:Primary.Lifestyle)
+#Selects 13 rlevant variables for model building
+
+fitControl <- trainControl(method = "cv", number = 10)
+kGrid <- expand.grid(k = seq(1, 15, by = 2))
+
+#KNN to predict beak length using all other variables in the model (minus other beak attributes)
+
+model.knn <- train(Beak.Length_Culmen ~ ., data = birds.models,
+                   method = "knn",
+                   reProc = c("center", "scale"),
+                   trControl = fitControl,
+                   tuneGrid = kGrid) 
+model.knn
+```
+
+Here we take a 10-fold Cross-Validation approach by randomly taking 1/10 of the observations out, building a model with the other 9/10, testing that model on the 1/10, and repeating over 10 folds.  The best model was made by taking the five nearest neighbors of a predicted data point.  This one has the lowest overall average distance between predicted observations of the model built and the actual observations it was tested on.  But we need to make another model to compare that RMSE value and see if we can do better.
+
+
+## Comparing KNN to a Linear Model
+
+Next we will build another type of model, one that assess the linear relationship of explanatory variables to response, to see if it does better or worse than our KNN model.
+
+```{r echo=FALSE}
+model.lm <- train(Beak.Length_Culmen ~ ., data = birds.models,
+                  method = "lm",
+                  trControl = fitControl)
+model.lm
+```
+
+This model uses the same 10-fold CV approach explained above has a lower RMSE, meaning the overall average distances between the model and the datasets it was tested on is lower - It means it did better than KNN (not my much but it's something!)  One nice feature of building a linear model is that you get coefficiant estimates: Each explanatory variable is shown to influence the model in such a way when you hold all other variables constant.  For example:
+We would expect the length of a bird's beak to increase by 0.2693 units for every unit increase in *Tarsus.Length* if all other variables remained the same.  Or, we would expect birds in a wetland habitat to have a beak length 9.855 units greater than if they did not and all other variables were the same (or 7.170 units for woodland birds).  Note that all other values that start with *Habitat* other than the one we are specifically interested in would be equal to 0 when we are observing birds in a specific habitat, simply due to the nature of the model because we canont be observing more than one habitat at a time for any one observation.
+
+### prediction values for each model
+
+```{r echo=FALSE}
+#Testing models with the prediction function
+
+newbird <- data.frame(Tarsus.Length = 50, Wing.Length = 275,
+                       Kipps.Distance = 60, Secondary1 = 122.5, 
+                       Tail.Length = 204, Mass = 442, 
+                       Habitat = "Forest", Habitat.Density = 2,
+                       Migration = 3, Trophic.Level = "Carnivore",
+                       Trophic.Niche = "Invertivore", Primary.Lifestyle = "Aerial")
+
+predict(model.knn, newdata = newbird)
+predict(model.lm, newdata = newbird)
+```
+The KNN model predicted a value much different than the linear model.  Which is correct?  We would be inclined to agree with the linear model more so because it did a better job overall, but neither is perfect.  (We are statisticians, not magicians.)
+
+
+## Classification Trees
+
+Next we are going to switch gears and make predictions on a categorical response variable.  Here instead of answering questions like, "What's the beak length of a woodland bird that has a tail length of 22cm, a mass of 520g, and a wingspan of 30cm?" we are answering questions like, "If I see a bird that looks to have a beak depth of 5cm, a tarsus length of 4.2cm, eating a worm out in the desert, what is its primary lifestyle?"
+
+```{r echo=FALSE}
+birds.class <- select(birdsnm, Beak.Depth, Tarsus.Length:Secondary1, Tail.Length:Primary.Lifestyle)
+
+
+#Model to predict Primary.Lifestyle
+ 
+class.tree <- train(Primary.Lifestyle ~ ., 
+                     data = birds.class,
+                     method = "rpart",
+                     trControl = fitControl,
+                     tuneLength = 10)
+class.tree
+ 
+ plot(class.tree$finalModel)
+ text(class.tree$finalModel)
+```
+
+This displays a model that we can take with us in the field to make predictions of what we see.  Suppose we find a bird in a habitat density greater than 2.5 (discrete variable score from 1-3, 3 being the most open spaces like grasslands or desert).  Then we would move to the left and ask ourselves "Is it in a marine habitat?"  Which is pretty open.  Here we have a value of 0 for "no" and 1 for "yes."  So let's say "no" and move to the right sequential decision (note that we always move to the left for true outcomes, and to the right for false).  We saw this bird eating a lilypad, indicating that it is in fact herbivore aquatic, so we move down the line to the left and discover that its primary lifestyle is **Aquatic**.
+
+
+
+
+## Linear Discriminant Analysis
+
+Lastly, we will try one more approach to predicting the Primary Lifestyle of a bird.  Only this time, we are using a different approach and we will be taking the 8 most important predictor variables from our last model.
+Here are the listed variables from our Classification Tree in order of importance:
+
+```{r echo=FALSE}
+varImp(class.tree)      #--tells us the importance of predictor variables from most to least
+```
+
+Next we run LDA:
+```{r echo=FALSE}
+#LDA
+fitControl <- trainControl(method = "cv", number = 8)
+
+class.lda <- train(Primary.Lifestyle ~ Tarsus.Length + Secondary1 + Wing.Length + Habitat + Kipps.Distance + Beak.Depth + Mass + Trophic.Niche,
+                   data = birds.class,
+                   method = "lda",
+                   trControl = fitControl)
+class.lda
+```
+Even though our Linear Discriminate Analysis did not do as well as our Classification Tree, we are still left with a decent accuracy under the reduced number of explanatory variables.  This poses an interesting question when out in the field: If I already know where I am when I see a bird whose lifestyle I want to predict, why, then do I need *Habitat* as another variable?" Or, another question, "Can this model perform better or worse in different habitats?"
+
+/
+The answer to those questions can be answered by sub-setting the data into five different datasets, running a new model for each, and analyzing the results.  See below:
+
+```{r echo=FALSE, warning=FALSE}
+set.seed(6)
+birds.forest <- filter(birdsnm, Habitat == "Forest")
+birds.shrubland <- filter(birdsnm, Habitat == "Shrubland")
+birds.woodland <- filter(birdsnm, Habitat == "Woodland")
+birds.grassland <- filter(birdsnm, Habitat == "Grassland")
+birds.wetland <- filter(birdsnm, Habitat == "Wetland")
+
+class.lda.forest <- train(Primary.Lifestyle ~ Tarsus.Length + Secondary1 + Wing.Length + Kipps.Distance + Beak.Depth + Mass + Trophic.Niche,
+                   data = birds.forest,
+                   method = "lda",
+                   trControl = fitControl)
+
+class.lda.shrubland <- train(Primary.Lifestyle ~ Tarsus.Length + Secondary1 + Wing.Length + Kipps.Distance + Beak.Depth + Mass + Trophic.Niche,
+                   data = birds.shrubland,
+                   method = "lda",
+                   trControl = fitControl)
+
+class.lda.woodland <- train(Primary.Lifestyle ~ Tarsus.Length + Secondary1 + Wing.Length + Kipps.Distance + Beak.Depth + Mass + Trophic.Niche,
+                   data = birds.woodland,
+                   method = "lda",
+                   trControl = fitControl)
+
+class.lda.grassland <- train(Primary.Lifestyle ~ Tarsus.Length + Secondary1 + Wing.Length + Kipps.Distance + Beak.Depth + Mass + Trophic.Niche,
+                   data = birds.grassland,
+                   method = "lda",
+                   trControl = fitControl)
+
+class.lda.wetland <- train(Primary.Lifestyle ~ Tarsus.Length + Secondary1 + Wing.Length + Kipps.Distance + Beak.Depth + Mass + Trophic.Niche,
+                   data = birds.wetland,
+                   method = "lda",
+                   trControl = fitControl)
+```
+
+```{r}
+class.lda.forest$results$Accuracy
+class.lda.shrubland$results$Accuracy
+class.lda.woodland$results$Accuracy
+class.lda.grassland$results$Accuracy
+class.lda.wetland$results$Accuracy
+```
+This shows that out LDA model is most accurate in forests.  But that seems awfully convenient, especially after we recall that over half of our dataset consisted of forest dwellers.  The remedy: balance the classes!
+
+
+```{r echo=FALSE}
+table(birds$Primary.Lifestyle)
+```
+Notice we have a class imbalance.  Predictions will tend to fall in categories of "Insessorial" and "Terrestrial" if we do not remedy this.  So, we will create a new dataset that randomly selects 200 observations from each category of *Primary.Lifestyle* and create new models using LDA as we have above.
+
+```{r echo=FALSE}
+#Randomly selecting 200 obs from each category of Primary.Lifestyle
+
+Ae.100 <- filter(birdsnm, Primary.Lifestyle == "Aerial") %>% 
+  sample_n(200)
+Aq.100 <- filter(birdsnm, Primary.Lifestyle == "Aquatic") %>% 
+  sample_n(200)
+G.100 <- filter(birdsnm, Primary.Lifestyle == "Generalist") %>% 
+  sample_n(200)
+I.100 <- filter(birdsnm, Primary.Lifestyle == "Insessorial") %>% 
+  sample_n(200)
+T.100 <- filter(birdsnm, Primary.Lifestyle == "Terrestrial") %>% 
+  sample_n(200)
+
+birds.classy <- rbind(Ae.100,Aq.100,G.100,I.100,T.100)
+```
+
+
+```{r echo=FALSE, warning=FALSE}
+set.seed(6)
+birds.forest <- filter(birds.classy, Habitat == "Forest")
+birds.shrubland <- filter(birds.classy, Habitat == "Shrubland")
+birds.woodland <- filter(birds.classy, Habitat == "Woodland")
+birds.grassland <- filter(birds.classy, Habitat == "Grassland")
+birds.wetland <- filter(birds.classy, Habitat == "Wetland")
+
+class.lda.forest.b <- train(Primary.Lifestyle ~ Tarsus.Length + Secondary1 + Wing.Length + Kipps.Distance + Beak.Depth + Mass + Trophic.Niche,
+                   data = birds.forest,
+                   method = "lda",
+                   trControl = fitControl)
+
+class.lda.shrubland.b <- train(Primary.Lifestyle ~ Tarsus.Length + Secondary1 + Wing.Length + Kipps.Distance + Beak.Depth + Mass + Trophic.Niche,
+                   data = birds.shrubland,
+                   method = "lda",
+                   trControl = fitControl)
+
+class.lda.woodland.b <- train(Primary.Lifestyle ~ Tarsus.Length + Secondary1 + Wing.Length + Kipps.Distance + Beak.Depth + Mass + Trophic.Niche,
+                   data = birds.woodland,
+                   method = "lda",
+                   trControl = fitControl)
+
+class.lda.grassland.b <- train(Primary.Lifestyle ~ Tarsus.Length + Secondary1 + Wing.Length + Kipps.Distance + Beak.Depth + Mass + Trophic.Niche,
+                   data = birds.grassland,
+                   method = "lda",
+                   trControl = fitControl)
+
+class.lda.wetland.b <- train(Primary.Lifestyle ~ Tarsus.Length + Secondary1 + Wing.Length + Kipps.Distance + Beak.Depth + Mass + Trophic.Niche,
+                   data = birds.wetland,
+                   method = "lda",
+                   trControl = fitControl)
+```
+
+```{r}
+class.lda.forest.b$results$Accuracy
+class.lda.shrubland.b$results$Accuracy
+class.lda.woodland.b$results$Accuracy
+class.lda.grassland.b$results$Accuracy
+class.lda.wetland.b$results$Accuracy
+```
+Accuracy was sacrificed in the balancing of classes because about 90 percent of our observations were removed.  However, the purpose of this final trial was to display the impact that the imbalance had on the relative accuracies of our models.  Before, forest topped the list at over 80% because most of our observations were of that habitat.  Now, wetlands are the highest and it shows that our LDA model will be most accurate in predicting the primary lifestyle of a bird when it is observed in a wetland habitat.
+
+## Epilogue
+
+The restrictions of time were the most troublesome in the making of this project.  It stems from my mistake of choosing a difficult dataset in the beginning that consisted primarily of categorical variables and outperformed my current skill set in mining data.  After having found a new dataset that was both more interesting and related even closer to the skills learned in this class, I nearly had to start from scratch.  With more time, perhaps by trying out different functions in R and further using the tools displayed here, I believe I can find models that have a higher accuracy or lower test error than those seen above.  Also, if seen below within the .Rmd file, one can see I was working on a graphical prediction simulator that would display a point on a graph and color it based on the predicted value for *Primary.Lifestyle* as a means of visually representing the accuracy of the Classification Tree model.  It works, but it took a while and I found it useless for a static report. If ever possible, I would definitely consider doing more simulations to show my findings in the future.
+
+```{r eval=FALSE, include=FALSE}
+table(birds$Primary.Lifestyle)
+```
+
+```{r eval=FALSE, include=FALSE}
+#Randomly selecting 200 obs from each category of Primary.Lifestyle
+
+Ae.100 <- filter(birds, Primary.Lifestyle == "Aerial") %>% 
+  sample_n(200)
+Aq.100 <- filter(birds, Primary.Lifestyle == "Aquatic") %>% 
+  sample_n(200)
+G.100 <- filter(birds, Primary.Lifestyle == "Generalist") %>% 
+  sample_n(200)
+I.100 <- filter(birds, Primary.Lifestyle == "Insessorial") %>% 
+  sample_n(200)
+T.100 <- filter(birds, Primary.Lifestyle == "Terrestrial") %>% 
+  sample_n(200)
+
+birds.classy <- rbind(Ae.100,Aq.100,G.100,I.100,T.100)
+```
+
+```{r eval=FALSE, include=FALSE}
+#Creating a new model with the adjusted classes and rediced variables
+
+class.tree.2 <- train(Primary.Lifestyle ~ Beak.Depth + Tarsus.Length + Mass, 
+                     data = birds.classy,
+                     method = "rpart",
+                     trControl = fitControl,
+                     tuneLength = 10)
+class.tree.2
+```
+
+```{r eval=FALSE, include=FALSE}
+#---Prediction Simulator---#
+    
+range(birds.classy$Tarsus.Length)  #Finding the ranges of each variable
+range(birds.classy$Beak.Depth)
+range(birds.classy$Mass)
+ 
+TL <- runif(1, 2.5, 301.0)  #applying the ranges into a random number generator
+BD <- runif(1, 1.0, 57.7)
+M <- runif(1, 1.9, 33569.3)
+
+plpoint <- data.frame(Tarsus.Length = TL, Beak.Depth = BD,
+                      Mass = M) #creates a data point using the random number generator
+
+ggplot(birds.class, aes(x = Beak.Depth, y = Tarsus.Length, size = Mass, color = Primary.Lifestyle)) +
+  geom_point(alpha = .5) +
+  geom_point(aes(x = plpoint$Beak.Depth,
+                 y = plpoint$Tarsus.Length,
+                 Size = Mass,
+                 color = predict(class.tree.2, newdata = plpoint)), outline = "red")
+
+#plots the new dataset, the random point, and gives a color label to the prediction of Primary.Lifestyle from our classification decision tree
+
+predict(class.tree.2, newdata = plpoint)  #The prediction label
+
+```
+
